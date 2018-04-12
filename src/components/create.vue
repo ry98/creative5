@@ -230,6 +230,7 @@
     flex: 50%;
 }
  ul,ol{
+      list-style-position:inside;
      
      text-align: center;
      //margin-left:25%;

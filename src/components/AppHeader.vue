@@ -98,4 +98,17 @@
  h1{
  color:#F35537;
  }
+   button
+{
+    font-family: 'Raleway', sans-serif;
+    background-color:#FF5733;
+    color:white;
+    border:none;
+        
+}
+input
+{
+  border:none;
+  border-bottom: 2px solid #FF5733;
+}
 </style>
