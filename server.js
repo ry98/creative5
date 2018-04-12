@@ -7,6 +7,8 @@ app.use(bodyParser.json());
 app.use(bodyParser.urlencoded({ extended: false }));
 
 app.use(express.static('public'));
+// jwt setup
+
 
 // Knex Setup
 const env = process.env.NODE_ENV || 'development';
@@ -16,10 +18,43 @@ const knex = require('knex')(config);
 // bcrypt setup
 let bcrypt = require('bcrypt');
 const saltRounds = 10;
+const jwt = require('jsonwebtoken');
+let jwtSecret = process.env.jwtSecret;
+if (jwtSecret === undefined) {
+  console.log("You need to define a jwtSecret environment variable to continue.");
+  knex.destroy();
+  process.exit();
+}
+
+const verifyToken = (req, res, next) => {
+  const token = req.headers['authorization'];
+  console.log(token);
+  if (!token)
+    return res.status(403).send({ error: 'No token provided.' });
+  jwt.verify(token, jwtSecret, function(err, decoded) {
+    if (err)
+      return res.status(500).send({ error: 'Failed to authenticate token.' });
+    // if everything good, save to request for use in other routes
+    req.userID = decoded.id;
+    console.log(req.userID);
+    next();
+  });
+}
+
 
 app.listen(3000, () => console.log('Server listening on port 3000!'));
-app.delete('/api/recipe/:id', (req, res) => {
+app.delete('/api/:userid/recipe/:id',verifyToken, (req, res) => {
+	 console.log("here");
    let id = parseInt(req.params.id);
+   let userid = parseInt(req.params.userid);
+   console.log("here");
+   if (userid !== req.userID) {
+	 	console.log(id);
+	 	console.log(userid);
+	 	console.log(req.userID);
+    res.status(403).send();
+    return;
+  }
    knex('ingredients').where('reicpe_id',id).del().catch(error => {
       console.log(error);
       res.status(500).json({ error });
@@ -35,8 +70,14 @@ app.delete('/api/recipe/:id', (req, res) => {
       res.status(500).json({ error });
     });
 });
-app.post('/api/users/:id/recipes', (req, res) => {
-  let id = parseInt(req.params.id);
+	app.post('/api/users/:id/recipes', verifyToken, (req, res) => {
+   	let id = parseInt(req.params.id);
+	 if (id !== req.userID) {
+	 	console.log(id);
+	 	console.log(req.userID);
+    res.status(403).send();
+    return;
+  }
   knex('users').where('id',id).first().then(user => {
     return knex('recipes').insert({user_id: id, recipe:req.body.recipe, created: new Date()});
   }).then(ids => {
@@ -48,12 +89,22 @@ app.post('/api/users/:id/recipes', (req, res) => {
     return;
   }).catch(error => {
     console.log(error);
-    console.log("hi")
+    console.log("hi");
+    console.log(error);
     res.status(500).json({ error });
   });
 });
-app.post('/api/recipes/:id/ingredients', (req, res) => {
-  let id = parseInt(req.params.id);
+app.post('/api/:userid/recipes/:id/ingredients', verifyToken, (req, res) => {
+   let id = parseInt(req.params.id);
+   let userid = parseInt(req.params.userid);
+   console.log("here");
+   if (userid !== req.userID) {
+	 	console.log(id);
+	 	console.log(userid);
+	 	console.log(req.userID);
+    res.status(403).send();
+    return;
+  }
   console.log(id);
   knex('recipes').where('id',id).first().then(recipe => {
     return knex('ingredients').insert({reicpe_id: id, ingredient:req.body.ingredient});
@@ -68,8 +119,17 @@ app.post('/api/recipes/:id/ingredients', (req, res) => {
     res.status(500).json({ error });
   });
 });
-app.post('/api/recipes/:id/steps', (req, res) => {
-  let id = parseInt(req.params.id);
+app.post('/api/:userid/recipes/:id/steps', verifyToken, (req, res) => {
+   let id = parseInt(req.params.id);
+   let userid = parseInt(req.params.userid);
+   console.log("here");
+   if (userid !== req.userID) {
+	 	console.log(id);
+	 	console.log(userid);
+	 	console.log(req.userID);
+    res.status(403).send();
+    return;
+  }
   knex('recipes').where('id',id).first().then(recipe => {
     return knex('steps').insert({reicpe_id: id, step:req.body.step});
   }).then(ids => {
@@ -164,7 +224,10 @@ app.post('/api/users', (req, res) => {
   }).then(ids => {
     return knex('users').where('id',ids[0]).first().select('username','name','id');
   }).then(user => {
-    res.status(200).json({user:user});
+    let token = jwt.sign({ id: user.id }, jwtSecret, {
+      expiresIn: 86400 // expires in 24 hours
+    });
+    res.status(200).json({user:user,token:token});
     return;
   }).catch(error => {
     if (error.message !== 'abort') {
@@ -185,10 +248,16 @@ app.post('/api/login', (req, res) => {
     }
     return [bcrypt.compare(req.body.password, user.hash),user];
   }).spread((result,user) => {
-    if (result)
-      res.status(200).json({user:{username:user.username,name:user.name,id:user.id}});
-    else
-      res.status(403).send("Invalid credentials");
+     if (result) {
+     	console.log(user.id);
+       let token = jwt.sign({ id: user.id }, jwtSecret, {
+        expiresIn: 86400 // expires in 24 hours
+       });console.log(user.id);
+       console.log(token);
+      res.status(200).json({user:{username:user.username,name:user.name,id:user.id},token:token});
+    } else {
+       res.status(403).send("Invalid credentials");
+   }
     return;
   }).catch(error => {
     if (error.message !== 'abort') {

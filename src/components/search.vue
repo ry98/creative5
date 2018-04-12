@@ -22,7 +22,7 @@
    data () {
      return {
        input: '',
-       //feed:[],
+
  
        
      }
@@ -32,6 +32,7 @@
       {
         this.$router.push('/');
       }
+      this.$store.dispatch('clearSearch');
      //this.$store.dispatch('getFeed');
      
    },
@@ -67,7 +68,6 @@
    methods: {
 
       search: function() {
-      this.feed=[];
       console.log(this.input);
        this.$store.dispatch('doSearch',this.input);
        this.input='';

@@ -9,7 +9,7 @@ export default new Vuex.Store({
   state: {
     user: {},
     recipe_id:1,
-    loggedIn: false,
+    token:'',
     loginError: '',
     registerError: '',
     feed: [],
@@ -21,7 +21,6 @@ export default new Vuex.Store({
   },
  getters: {
     user: state => state.user,
-    loggedIn: state => state.loggedIn,
     loginError: state => state.loginError,
     registerError: state => state.registerError,
     feed: state => state.feed,
@@ -30,14 +29,22 @@ export default new Vuex.Store({
     ingredients: state=>state.ingredients,
     steps:state=>state.steps,
     recipe_title:state=>state.recipe_title,
+      getToken: state => state.token,
+    getAuthHeader: state => {
+      return { headers: {'Authorization': state.token}};
+     // return { headers: {'Authorization': localStorage.getItem('token')}};
+    },
+    loggedIn: state => {
+      if (state.token === '')
+       return false;
+      return true;
+    },
   },
   mutations: {
     setUser (state, user) {
       state.user = user;
     },
-    setLogin (state, status) {
-      state.loggedIn = status;
-    },
+
     setLoginError (state, message) {
       state.loginError = message;
     },
@@ -62,7 +69,15 @@ export default new Vuex.Store({
     setRecipeTitle(state,title)
     {
       state.recipe_title=title;
-    }
+    },
+
+    setToken (state, token) {
+      state.token = token;
+      if (token === '')
+ localStorage.removeItem('token');
+      else
+ localStorage.setItem('token', token)
+    },
   },
   actions: {
     doSearch(context,keywords) {
@@ -74,9 +89,29 @@ export default new Vuex.Store({
       console.log("doSearch failed:",err);
      });
    },
+   clearSearch(context)
+   {
+    context.commit('setSearchFeed',[]);
+   },
+       // Initialize //
+    initialize(context) {
+      let token = localStorage.getItem('token');
+      if(token) {
+       // see if we can use the token to get my user account
+       axios.get("/api/me",context.getters.getAuthHeader).then(response => {
+         context.commit('setToken',token);
+         context.commit('setUser',response.data.user);
+       }).catch(err => {
+         // remove token and user from state
+         localStorage.removeItem('token');
+         context.commit('setUser',{}); 
+         context.commit('setToken','');
+       });
+      }
+    },
   	 // Tweeting //
    addRecipe(context,recipe) {
-      axios.post("/api/users/" + context.state.user.id + "/recipes",recipe).then(response => {
+     axios.post("/api/users/" + context.state.user.id + "/recipes",recipe,context.getters.getAuthHeader).then(response => {
 	  console.log(response.data.recipe.id)
     console.log(response);
     context.commit('setRecipe', response.data.recipe.id);
@@ -87,7 +122,9 @@ export default new Vuex.Store({
       });
     },
     deleteRecipe(context,recipe_id) {
-      axios.delete("/api/recipe/" +recipe_id).then(response => {
+      console.log(("/api/recipe/" +recipe_id+'/'+context.state.user.id));
+      axios.delete("/api/"+context.state.user.id+"/recipe/" +recipe_id,context.getters.getAuthHeader).then(response => {
+
   return context.dispatch('getFeed');
 
       }).catch(err => {
@@ -96,14 +133,14 @@ export default new Vuex.Store({
     },
     addIngredient(context,ingredient) {
       console.log("adding ingredient")
-      axios.post("/api/recipes/" + context.state.recipe_id + "/ingredients",ingredient).then(response => {
+      axios.post("/api/"+context.state.user.id+"/recipes/" + context.state.recipe_id + "/ingredients",ingredient,context.getters.getAuthHeader).then(response => {
   return context.dispatch('getFeed');
       }).catch(err => {
   console.log("addIngredient failed:",err);
       });
     },
     addStep(context,step) {
-      axios.post("/api/recipes/" + context.state.recipe_id + "/steps",step).then(response => {
+      axios.post("/api/"+context.state.user.id+"/recipes/" + context.state.recipe_id + "/steps",step,context.getters.getAuthHeader).then(response => {
   return context.dispatch('getFeed');
       }).catch(err => {
   console.log("addStep failed:",err);
@@ -137,13 +174,14 @@ export default new Vuex.Store({
   	 logout(context,user) {
       //this.$router.push({ path: '/'})
       context.commit('setUser', {});
-      context.commit('setLogin',false);
+         context.commit('setToken','');
     },
 
   	    login(context,user) {
       axios.post("/api/login",user).then(response => {
 	context.commit('setUser', response.data.user);
-	context.commit('setLogin',true);
+	 context.commit('setToken',response.data.token);
+   console.log(response.data.token);
 	context.commit('setRegisterError',"");
 	context.commit('setLoginError',"");
       }).catch(error => {
@@ -163,12 +201,14 @@ export default new Vuex.Store({
 
       axios.post("/api/users",user).then(response => {
 	context.commit('setUser', response.data.user);
-	context.commit('setLogin',true);
+	 context.commit('setToken',response.data.token);
+   console.log(response.data.token);
 	context.commit('setRegisterError',"");
 	context.commit('setLoginError',"");
       }).catch(error => {
 	context.commit('setLoginError',"");
-	context.commit('setLogin',false);
+	       context.commit('setUser',{});   
+       context.commit('setToken','');
 	if (error.response) {
 	  if (error.response.status === 403)
 	    context.commit('setRegisterError',"That email address already has an account.");
