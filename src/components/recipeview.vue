@@ -191,7 +191,7 @@
     flex: 50%;
 }
  ul,ol{
-     list-style-position:inside;
+     list-style-position:none;
      text-align: center;
      //margin-left:25%;
      //margin-right:25%;
